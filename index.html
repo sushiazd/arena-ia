@@ -68,6 +68,7 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{font:inherit;font-size:.85rem;background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:5px 11px;cursor:pointer}
 .chip:hover{border-color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
 .actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .btn{font:600 1rem var(--body);border-radius:8px;padding:12px 22px;cursor:pointer;border:2px solid var(--ink)}
@@ -156,9 +157,11 @@ footer{font-size:.8rem;color:var(--muted)}
       <input id="key" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
       <label class="check"><input id="remember" type="checkbox" checked> Garder la clé dans ce navigateur uniquement</label>
       <span class="small muted">Crée une clé sur <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> et ajoute quelques crédits.</span>
+      <span class="small mono" id="credit"></span>
     </div>
     <div class="field">
       <span class="label">Modèles</span>
+      <div class="chips" id="presets"></div>
       <div class="models" id="models"></div>
       <span class="small muted" id="modelsNote">Chargement de la liste des modèles…</span>
     </div>
@@ -173,17 +176,22 @@ footer{font-size:.8rem;color:var(--muted)}
     <div class="opts">
       <div class="field">
         <label class="label" for="rounds">Réfutations</label>
-        <select id="rounds"><option value="1">1 tour</option><option value="2" selected>2 tours</option><option value="3">3 tours</option></select>
+        <select id="rounds"><option value="1" selected>1 tour</option><option value="2">2 tours</option><option value="3">3 tours</option></select>
       </div>
       <div class="field">
         <label class="label" for="words">Longueur max</label>
-        <select id="words"><option value="120">120 mots</option><option value="200" selected>200 mots</option><option value="300">300 mots</option></select>
+        <select id="words"><option value="100">100 mots</option><option value="150" selected>150 mots</option><option value="200">200 mots</option><option value="300">300 mots</option></select>
+      </div>
+      <div class="field">
+        <label class="label" for="think">Réflexion</label>
+        <select id="think"><option value="min" selected>Minimale</option><option value="low">Faible</option><option value="medium">Moyenne</option></select>
       </div>
       <div class="field">
         <span class="label">Pendant le débat</span>
         <label class="check"><input id="blind" type="checkbox" checked> Cacher les noms</label>
       </div>
     </div>
+    <p class="small muted" style="margin:0">La réflexion cachée des modèles est facturée comme du texte écrit. En mode minimal, ils répondent presque sans réfléchir avant d'écrire : c'est le réglage le moins cher.</p>
     <div class="actions">
       <button class="btn primary" id="go" type="button">Lancer le débat</button>
       <button class="btn ghost" id="stop" type="button" hidden>Arrêter</button>
@@ -247,9 +255,15 @@ const store = {
 };
 
 const SLOTS = [
-  { key:'claude', label:'Claude',  prefix:'anthropic/',     prefer:/opus/i, avoid:/haiku|instant|:free/i, fallback:'anthropic/claude-opus-4.5' },
-  { key:'gpt',    label:'ChatGPT', prefix:'openai/',        prefer:/^openai\/gpt-\d+(\.\d+)?$/i, avoid:/mini|nano|audio|search|image|realtime|oss|codex|instruct|turbo|3\.5|4o|4\.1|:free/i, fallback:'openai/gpt-5' },
-  { key:'gemini', label:'Gemini',  prefix:'google/gemini',  prefer:/pro/i, avoid:/flash|lite|image|tts|embed|exp|:free/i, fallback:'google/gemini-2.5-pro' }
+  { key:'claude', label:'Claude',  prefix:'anthropic/',    rank:[/fable/i, /mythos/i, /opus/i], avoid:/haiku|:batch|:free|:thinking/i },
+  { key:'gpt',    label:'ChatGPT', prefix:'openai/',       rank:[/astra(?!-pro)/i, /sol(?!-pro)/i], avoid:/luna|terra|mini|nano|audio|search|image|realtime|oss|codex|:batch|:free/i },
+  { key:'gemini', label:'Gemini',  prefix:'google/gemini', rank:[/argon/i, /pro/i], avoid:/flash|lite|nano|banana|image|tts|embed|custom|:batch|:free/i }
+];
+const PRESETS = [
+  { id:'frontier', name:'Frontière', desc:'Fable 5.1, GPT-6 Astra, Gemini 4 Argon',
+    models:{ claude:'anthropic/claude-fable-5.1', gpt:'openai/gpt-6-astra', gemini:'google/gemini-4-argon' } },
+  { id:'eco', name:'Frontière éco', desc:'Opus 5.5, GPT-6.1 Sol, Gemini 4 Argon',
+    models:{ claude:'anthropic/claude-opus-5.5', gpt:'openai/gpt-6.1-sol', gemini:'google/gemini-4-argon' } }
 ];
 const LABEL = Object.fromEntries(SLOTS.map(s => [s.key, s.label]));
 const TOPICS = [
@@ -261,7 +275,7 @@ const TOPICS = [
 ];
 
 let MODELS = [];
-let cfg = store.get('arene.cfg', {});
+let cfg = store.get('arene.cfg2', {});
 let debate = null, controller = null, apiKey = '';
 
 /* ---------- Setup UI ---------- */
@@ -273,8 +287,8 @@ function buildSetup(){
     row.innerHTML = `<b>${s.label}</b><input type="text" id="m-${s.key}" list="dl-${s.key}" spellcheck="false" autocomplete="off"><datalist id="dl-${s.key}"></datalist><span class="price" id="p-${s.key}"></span>`;
     box.appendChild(row);
     const inp = row.querySelector('input');
-    inp.value = cfg.models?.[s.key] || s.fallback;
-    inp.addEventListener('change', () => { saveCfg(); showPrice(s.key); });
+    inp.value = cfg.models?.[s.key] || PRESETS[0].models[s.key];
+    inp.addEventListener('change', () => { saveCfg(); showPrice(s.key); syncPresets(); updateEstimate(); });
   });
   TOPICS.forEach(t => {
     const b = document.createElement('button');
@@ -282,21 +296,39 @@ function buildSetup(){
     b.addEventListener('click', () => { $('#topic').value = t; });
     $('#chips').appendChild(b);
   });
+  PRESETS.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.dataset.preset = p.id;
+    b.textContent = `${p.name} : ${p.desc}`;
+    b.addEventListener('click', () => {
+      SLOTS.forEach(s => { $('#m-' + s.key).value = p.models[s.key]; showPrice(s.key); });
+      saveCfg(); syncPresets(); updateEstimate();
+    });
+    $('#presets').appendChild(b);
+  });
+  syncPresets();
   if (cfg.rounds) $('#rounds').value = cfg.rounds;
   if (cfg.words) $('#words').value = cfg.words;
-  ['#rounds', '#words'].forEach(id => $(id).addEventListener('change', saveCfg));
+  if (cfg.think) $('#think').value = cfg.think;
+  ['#rounds', '#words', '#think'].forEach(id => $(id).addEventListener('change', () => { saveCfg(); updateEstimate(); }));
   const k = store.get('arene.key', '');
   if (k) $('#key').value = k;
   $('#remember').addEventListener('change', e => { if (!e.target.checked) store.del('arene.key'); });
 }
 function saveCfg(){
-  cfg = { models:Object.fromEntries(SLOTS.map(s => [s.key, $('#m-' + s.key).value.trim()])), rounds:$('#rounds').value, words:$('#words').value, userPicked:true };
-  store.set('arene.cfg', cfg);
+  cfg = { models:Object.fromEntries(SLOTS.map(s => [s.key, $('#m-' + s.key).value.trim()])), rounds:$('#rounds').value, words:$('#words').value, think:$('#think').value };
+  store.set('arene.cfg2', cfg);
+}
+function syncPresets(){
+  document.querySelectorAll('#presets .chip').forEach(b => {
+    const p = PRESETS.find(x => x.id === b.dataset.preset);
+    b.setAttribute('aria-pressed', String(SLOTS.every(s => $('#m-' + s.key).value.trim() === p.models[s.key])));
+  });
 }
 function pickDefault(s){
-  const list = MODELS.filter(m => m.id.startsWith(s.prefix));
-  const ok = list.filter(m => !s.avoid.test(m.id));
-  return (ok.find(m => s.prefer.test(m.id)) || ok[0] || list[0] || {}).id;
+  const ok = MODELS.filter(m => m.id.startsWith(s.prefix) && !s.avoid.test(m.id));
+  for (const re of s.rank){ const m = ok.find(x => re.test(x.id)); if (m) return m.id; }
+  return ok[0]?.id;
 }
 function showPrice(key){
   const id = $('#m-' + key).value.trim();
@@ -307,21 +339,75 @@ function showPrice(key){
   el.textContent = `${m.name || m.id}` + (isFinite(pin) ? ` · ${fmt(pin)} $ / M tokens en entrée, ${fmt(pout)} $ en sortie` : '');
 }
 const fmt = n => (n >= 10 ? n.toFixed(0) : n.toFixed(2)).replace('.', ',');
+const usd = n => (n < 0.1 ? n.toFixed(3) : n.toFixed(2)).replace('.', ',');
+const provider = id => id.split('/')[0];
+
+// Estimation grossière : ~1,7 token par mot en français, plus la réflexion cachée selon le réglage.
+function estimate(){
+  if (!MODELS.length) return null;
+  const R = +$('#rounds').value, W = +$('#words').value, level = $('#think').value;
+  const turn = W * 1.7;
+  let total = 0;
+  for (const s of SLOTS){
+    const id = $('#m-' + s.key).value.trim();
+    const m = MODELS.find(x => x.id === id);
+    if (!m) return null;
+    const pi = parseFloat(m.pricing?.prompt) || 0, po = parseFloat(m.pricing?.completion) || 0;
+    const think = (provider(id) === 'anthropic' ? { min:0, low:700, medium:2500 } : { min:300, low:800, medium:2500 })[level];
+    let inp = 350 + 3 * turn * (R + 1), out = 150 + think;                          // vote
+    for (let k = 0; k <= R; k++){ inp += 300 + 3 * turn * k; out += turn + think; }  // interventions
+    total += inp * pi + out * po;
+  }
+  return total;
+}
+function updateEstimate(){
+  if (debate && debate.running) return;
+  const e = estimate();
+  $('#cost').textContent = e == null ? '' : `Estimation : ~${usd(e)} $ par débat`;
+}
+async function loadCredit(){
+  const key = $('#key').value.trim(), el = $('#credit');
+  if (!key){ el.textContent = ''; return; }
+  for (const path of ['/key', '/auth/key']){
+    try {
+      const r = await fetch(API + path, { headers:{ 'Authorization':'Bearer ' + key } });
+      if (r.status === 401){ el.textContent = 'Clé refusée par OpenRouter.'; return; }
+      if (!r.ok) continue;
+      const d = (await r.json()).data || {};
+      if (d.limit != null){
+        const rem = d.limit_remaining ?? (d.limit - (d.usage || 0));
+        el.textContent = `Crédit restant sur la clé : ${usd(rem)} $ sur ${usd(d.limit)} $`;
+      } else {
+        el.textContent = `Dépensé avec cette clé : ${usd(d.usage || 0)} $`;
+      }
+      return;
+    } catch {}
+  }
+  el.textContent = '';
+}
 
 async function loadModels(){
   try {
     const r = await fetch(API + '/models');
     const j = await r.json();
     MODELS = (j.data || []).sort((a, b) => (b.created || 0) - (a.created || 0));
+    const swapped = [];
     SLOTS.forEach(s => {
       const dl = $('#dl-' + s.key);
       MODELS.filter(m => m.id.startsWith(s.prefix)).forEach(m => {
         const o = document.createElement('option'); o.value = m.id; o.label = m.name || m.id; dl.appendChild(o);
       });
-      if (!cfg.userPicked){ const d = pickDefault(s); if (d) $('#m-' + s.key).value = d; }
+      const inp = $('#m-' + s.key);
+      if (!MODELS.some(m => m.id === inp.value.trim())){
+        const d = pickDefault(s);
+        if (d){ swapped.push(`${inp.value.trim() || s.label} → ${d}`); inp.value = d; }
+      }
       showPrice(s.key);
     });
-    $('#modelsNote').textContent = 'Les modèles les plus récents sont choisis par défaut. Tape pour voir les autres.';
+    saveCfg(); syncPresets(); updateEstimate();
+    $('#modelsNote').textContent = swapped.length
+      ? 'Modèle introuvable sur OpenRouter, remplacé : ' + swapped.join(' ; ')
+      : 'Tape dans un champ pour choisir un autre modèle.';
   } catch {
     $('#modelsNote').textContent = 'Liste des modèles indisponible : vérifie les identifiants à la main (format fournisseur/modèle).';
   }
@@ -332,7 +418,11 @@ const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--){ co
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const clean = t => t.replace(/\r/g, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#+\s*/gm, '').trim();
 function showError(msg){ const e = $('#err'); e.textContent = msg; e.hidden = !msg; }
-function addCost(c){ if (typeof c === 'number' && debate){ debate.cost += c; $('#cost').textContent = 'Coût : ' + debate.cost.toFixed(4).replace('.', ',') + ' $'; } }
+function addCost(slot, c){
+  if (typeof c !== 'number' || !debate) return;
+  debate.cost += c; debate.costBy[slot] = (debate.costBy[slot] || 0) + c;
+  $('#cost').textContent = 'Coût : ' + usd(debate.cost) + ' $';
+}
 
 function errText(status, msg, model){
   if (status === 401) return 'Clé API refusée. Vérifie-la sur openrouter.ai/keys.';
@@ -342,31 +432,55 @@ function errText(status, msg, model){
   return `Erreur ${status} avec ${model}${msg ? ' : ' + msg : ''}.`;
 }
 
-async function chat(model, messages, maxTokens){
-  for (let attempt = 0; attempt < 2; attempt++){
+// Réglages de réflexion par fournisseur, du moins cher au plus sûr.
+// Si OpenRouter refuse un réglage (erreur 400, non facturée), on passe au suivant.
+function reasoningOptions(model, level){
+  const p = provider(model);
+  if (p === 'anthropic') return level === 'min' ? [null] : [{ max_tokens:level === 'low' ? 1024 : 4000 }, null];
+  if (p === 'openai') return level === 'min' ? [{ effort:'none' }, { effort:'minimal' }, { effort:'low' }, null] : [{ effort:level }, null];
+  if (p === 'google') return level === 'medium' ? [{ effort:'medium' }, { effort:'high' }, null] : [{ effort:'low' }, null];
+  return level === 'min' ? [null] : [{ effort:level }, null];
+}
+// Plafond de tokens en plus du texte visible : ce n'est qu'une limite, seul ce qui est utilisé est facturé.
+function headroom(model, level){
+  const base = { min:1000, low:2000, medium:5500 }[level];
+  return provider(model) === 'anthropic' && level !== 'min' ? base + 500 : base;
+}
+const reasonPick = {};
+
+async function chat(slot, messages, visibleTokens){
+  const model = debate.models[slot], level = debate.think;
+  const opts = reasoningOptions(model, level), ck = model + '|' + level;
+  let idx = reasonPick[ck] || 0, maxTokens = visibleTokens + headroom(model, level);
+  let retries = 0, grown = false;
+  while (true){
+    const body = { model, messages, max_tokens:maxTokens, usage:{ include:true } };
+    if (opts[idx]) body.reasoning = { ...opts[idx], exclude:true };
     let r;
     try {
       r = await fetch(API + '/chat/completions', {
         method:'POST', signal:controller.signal,
         headers:{ 'Authorization':'Bearer ' + apiKey, 'Content-Type':'application/json' },
-        body:JSON.stringify({ model, messages, max_tokens:maxTokens, usage:{ include:true }, reasoning:{ exclude:true } })
+        body:JSON.stringify(body)
       });
     } catch (e) {
       if (e.name === 'AbortError') throw e;
-      if (attempt === 0){ await wait(1500); continue; }
+      if (retries++ < 1){ await wait(1500); continue; }
       throw new Error('Impossible de joindre OpenRouter. Vérifie ta connexion internet.');
     }
     const j = await r.json().catch(() => ({}));
     if (r.ok && !j.error){
-      addCost(j.usage?.cost);
-      const c = j.choices?.[0]?.message?.content;
+      addCost(slot, j.usage?.cost);
+      const ch = j.choices?.[0], c = ch?.message?.content;
       const text = Array.isArray(c) ? c.map(p => p.text || '').join('') : (c || '');
-      if (text.trim()) return text;
-      if (attempt === 0) continue;
+      if (text.trim()){ reasonPick[ck] = idx; return text; }
+      if (!grown && ch?.finish_reason === 'length'){ grown = true; maxTokens *= 2; continue; }
+      if (retries++ < 1) continue;
       throw new Error(`${model} a renvoyé une réponse vide.`);
     }
     const status = r.ok ? (j.error?.code || 500) : r.status;
-    if ((status === 429 || status >= 500) && attempt === 0){ await wait(2500); continue; }
+    if (status === 400 && idx < opts.length - 1){ idx++; continue; }
+    if ((status === 429 || status >= 500) && retries++ < 1){ await wait(2500); continue; }
     throw new Error(errText(status, j.error?.message, model));
   }
 }
@@ -401,7 +515,7 @@ Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour :
   const user = `Sujet : « ${debate.topic} »\n\n${transcript(debate.rounds, s => lab[s])}`;
   const msgs = [{ role:'system', content:sys }, { role:'user', content:user }];
   for (let attempt = 0; attempt < 2; attempt++){
-    const text = await chat(debate.models[slot], msgs, 3000);
+    const text = await chat(slot, msgs, 450);
     try {
       const o = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
       const inv = Object.fromEntries(Object.entries(lab).map(([k, v]) => [v, k]));
@@ -475,7 +589,7 @@ async function runDebate(){
   const R = +$('#rounds').value, W = +$('#words').value;
   const letters = shuffle(['A', 'B', 'C']);
   const letterOf = {}; SLOTS.forEach((s, i) => letterOf[s.key] = letters[i]);
-  debate = { topic, models, letterOf, rounds:[], verdicts:{}, cost:0, revealed:false };
+  debate = { topic, models, letterOf, rounds:[], verdicts:{}, cost:0, costBy:{}, think:$('#think').value, est:estimate(), revealed:false, running:true };
   controller = new AbortController();
   const titles = ['Ouverture', ...Array.from({ length:R }, (_, i) => 'Réfutation ' + (i + 1)), 'Vote'];
 
@@ -483,7 +597,7 @@ async function runDebate(){
   $('#rounds-out').textContent = '';
   $('#arenaLabel').textContent = 'Sujet';
   $('#arenaTopic').textContent = topic; $('#arenaTopic').hidden = false;
-  $('#cost').textContent = '';
+  $('#cost').textContent = 'Coût : 0 $';
   $('#go').disabled = true; $('#stop').hidden = false;
 
   try {
@@ -493,7 +607,7 @@ async function runDebate(){
       renderRound(k);
       await Promise.all(SLOTS.map(async s => {
         try {
-          const text = await chat(models[s.key], debaterMessages(s.key, k, W), 4000);
+          const text = await chat(s.key, debaterMessages(s.key, k, W), Math.ceil(W * 2.2) + 80);
           debate.rounds[k].turns[s.key] = text; fillCard(k, s.key, text);
         } catch (e) {
           fillCard(k, s.key, e.name === 'AbortError' ? 'Interrompu.' : e.message, true); throw e;
@@ -510,7 +624,9 @@ async function runDebate(){
     showError(e.name === 'AbortError' ? 'Débat arrêté. Rien n\'a été compté dans la saison.' : e.message + ' Le débat s\'est arrêté et n\'a pas été compté.');
     $('#steps').textContent = '';
   } finally {
+    debate.running = false;
     $('#go').disabled = false; $('#stop').hidden = true;
+    loadCredit();
   }
 }
 
@@ -541,7 +657,8 @@ function finish(){
     const f = v => v.toFixed(1).replace('.', ',');
     el.querySelector('.detail').textContent =
       (r.from.length ? `Notes des autres juges : ${r.from.map(f).join(' et ')}` : 'Aucune note valide des autres juges') +
-      (r.self != null ? ` · Auto-évaluation : ${f(r.self)} (non comptée)` : '');
+      (r.self != null ? ` · Auto-évaluation : ${f(r.self)} (non comptée)` : '') +
+      (debate.costBy[k] ? ` · Coût : ${usd(debate.costBy[k])} $` : '');
     el.querySelector('.score').innerHTML = r.score != null ? `${f(r.score)}<small>/10</small>` : '—';
     pod.appendChild(el);
   });
@@ -551,7 +668,8 @@ function finish(){
   $('#bias').textContent =
     (winners.length > 1 ? 'Égalité au sommet. ' : '') +
     `${selfPicks} juge${selfPicks > 1 ? 's' : ''} sur ${valid} ${selfPicks > 1 ? 'se sont désignés' : 's\'est désigné'} vainqueur${selfPicks > 1 ? 's' : ''} sans connaître les identités.` +
-    (debate.cost ? ` Coût total : ${debate.cost.toFixed(4).replace('.', ',')} $.` : '');
+    (debate.cost ? ` Coût total : ${usd(debate.cost)} $.` : '');
+  $('#cost').textContent = `Coût réel : ${usd(debate.cost)} $` + (debate.est != null ? ` · estimé ~${usd(debate.est)} $` : '');
 
   const jb = $('#judges'); jb.textContent = '';
   SLOTS.forEach(s => {
@@ -618,6 +736,8 @@ $('#blind').addEventListener('change', refreshNames);
 buildSetup();
 renderSeason();
 loadModels();
+$('#key').addEventListener('change', loadCredit);
+loadCredit();
 </script>
 </body>
 </html>
