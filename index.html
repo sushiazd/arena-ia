@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Arène des IA</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: scoreboard header, setup console, rounds as three-lane rows, verdict podium, season table */
+:root{
+  --bg:#eceff3; --surface:#ffffff; --sunk:#f5f7fa; --ink:#14171c; --muted:#596170; --line:#d5dae2;
+  --a:#d9480f; --b:#0b7285; --c:#6741d9; --gold:#a87b00; --danger:#c92a2a;
+  --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1115; --surface:#181b21; --sunk:#13161b; --ink:#eceef2; --muted:#9aa2ae; --line:#2a2f38;
+    --a:#ff8a4c; --b:#3bc9db; --c:#a58bff; --gold:#f2c94c; --danger:#ff6b6b; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1115; --surface:#181b21; --sunk:#13161b; --ink:#eceef2; --muted:#9aa2ae; --line:#2a2f38;
+  --a:#ff8a4c; --b:#3bc9db; --c:#a58bff; --gold:#f2c94c; --danger:#ff6b6b; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink); font:15px/1.55 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px)); padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:max(20px,env(safe-area-inset-top,0px)) max(40px,env(safe-area-inset-bottom,0px));
+}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--display);font-weight:800;letter-spacing:.01em;margin:0;text-wrap:balance;text-transform:uppercase}
+h2{font-size:1.65rem;line-height:1}
+.label{font-size:.72rem;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+a{color:inherit}
+
+/* Header */
+header{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:16px;border-bottom:3px solid var(--ink);padding-bottom:14px}
+h1{font-size:clamp(2.6rem,9vw,4.6rem);line-height:.85}
+h1 .tri{display:inline-flex;gap:6px;vertical-align:middle;margin-left:10px}
+h1 .tri i{width:.28em;height:.62em;display:block;border-radius:2px}
+.tagline{max-width:34ch;color:var(--muted);margin:0}
+
+/* Panels */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px;display:flex;flex-direction:column;gap:18px}
+.grid2{display:grid;grid-template-columns:1fr;gap:18px}
+@media (min-width:860px){.grid2{grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)}}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+input[type=text],input[type=password],select,textarea{
+  font:inherit;color:var(--ink);background:var(--sunk);border:1px solid var(--line);border-radius:7px;padding:10px 12px;width:100%;min-width:0;
+}
+textarea{resize:vertical;min-height:72px}
+input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.check{display:flex;gap:8px;align-items:center;font-size:.9rem;color:var(--muted)}
+.models{display:flex;flex-direction:column;gap:10px}
+.model{display:grid;grid-template-columns:92px minmax(0,1fr);gap:10px;align-items:center}
+.model b{font-family:var(--display);font-size:1.25rem;text-transform:uppercase;letter-spacing:.02em}
+.price{grid-column:2;font-size:.78rem;color:var(--muted);margin-top:-6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:.85rem;background:transparent;border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:5px 11px;cursor:pointer}
+.chip:hover{border-color:var(--ink)}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{font:600 1rem var(--body);border-radius:8px;padding:12px 22px;cursor:pointer;border:2px solid var(--ink)}
+.btn.primary{background:var(--ink);color:var(--bg)}
+.btn.primary:hover{opacity:.88}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.small{font-size:.82rem}
+.error{border:1px solid var(--danger);color:var(--danger);border-radius:8px;padding:10px 14px;background:var(--sunk)}
+
+/* Steps */
+.steps{display:flex;flex-wrap:wrap;gap:6px;list-style:none;margin:0;padding:0}
+.steps li{font-size:.8rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:5px 10px;border-radius:5px;border:1px solid var(--line);color:var(--muted)}
+.steps li.active{border-color:var(--ink);color:var(--ink);animation:pulse 1.4s ease-in-out infinite}
+.steps li.done{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+@keyframes pulse{50%{opacity:.55}}
+@media (prefers-reduced-motion:reduce){.steps li.active{animation:none}}
+
+/* Arena */
+.arena-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:12px}
+.topic{font-family:var(--display);font-weight:600;font-size:clamp(1.4rem,4vw,2rem);line-height:1.05;margin:4px 0 0;text-wrap:balance}
+.round{display:flex;flex-direction:column;gap:12px}
+.round h3{font-size:1.15rem;display:flex;align-items:center;gap:10px}
+.round h3::after{content:"";flex:1;height:1px;background:var(--line)}
+.lanes{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:900px){.lanes{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.card{background:var(--surface);border:1px solid var(--line);border-top:4px solid var(--lane);border-radius:8px;padding:14px 16px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.card .who{display:flex;align-items:center;gap:8px;font-weight:600}
+.letter{font-family:var(--display);font-weight:800;font-size:1.05rem;width:26px;height:26px;border-radius:5px;display:inline-grid;place-items:center;background:var(--lane);color:var(--surface)}
+.card .who .name{color:var(--muted);font-weight:500}
+.card p{margin:0 0 .7em}
+.card p:last-child{margin-bottom:0}
+.card .body{font-size:.94rem;max-width:65ch}
+.card.pending .body{color:var(--muted);font-style:italic}
+.card.failed .body{color:var(--danger)}
+.lA{--lane:var(--a)} .lB{--lane:var(--b)} .lC{--lane:var(--c)}
+
+.empty{display:grid;grid-template-columns:1fr;gap:14px;counter-reset:s}
+@media (min-width:760px){.empty{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.empty div{border-left:3px solid var(--line);padding:2px 0 2px 12px}
+.empty b{display:block;font-family:var(--display);font-size:1.2rem;text-transform:uppercase}
+.empty b::before{counter-increment:s;content:counter(s) " · ";color:var(--muted)}
+.empty span{font-size:.9rem;color:var(--muted)}
+
+/* Verdict */
+.podium{display:flex;flex-direction:column;gap:10px}
+.place{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;align-items:center;background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--lane);border-radius:8px;padding:14px 16px}
+.place.win{border-color:var(--gold);border-left-color:var(--gold);box-shadow:0 0 0 1px var(--gold)}
+.rank{font-family:var(--display);font-weight:800;font-size:2.2rem;line-height:1;color:var(--muted)}
+.place.win .rank{color:var(--gold)}
+.place .nm{font-family:var(--display);font-weight:800;font-size:1.5rem;text-transform:uppercase;line-height:1}
+.place .detail{font-size:.82rem;color:var(--muted)}
+.score{font-family:var(--mono);font-size:1.7rem;text-align:right;line-height:1}
+.score small{font-size:.8rem;color:var(--muted)}
+.judges{display:grid;grid-template-columns:1fr;gap:10px}
+@media (min-width:900px){.judges{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.judge{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:var(--sunk);font-size:.9rem;min-width:0}
+.judge .label{display:block;margin-bottom:4px}
+.note{font-size:.88rem;color:var(--muted);margin:0}
+
+/* Season */
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.n{font-family:var(--mono);text-align:right} th.n{text-align:right}
+.hist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:.88rem}
+.hist li{display:flex;gap:10px;justify-content:space-between;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.hist .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hist .w{font-weight:600;white-space:nowrap}
+footer{font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Arène des IA<span class="tri" aria-hidden="true"><i style="background:var(--a)"></i><i style="background:var(--b)"></i><i style="background:var(--c)"></i></span></h1>
+  <p class="tagline">Claude, ChatGPT et Gemini débattent sous un nom de code, puis se notent à l'aveugle. L'auto-évaluation ne compte pas.</p>
+</header>
+
+<section class="grid2">
+  <div class="panel">
+    <div class="field">
+      <label class="label" for="key">Clé API OpenRouter</label>
+      <input id="key" type="password" placeholder="sk-or-v1-…" autocomplete="off" spellcheck="false">
+      <label class="check"><input id="remember" type="checkbox" checked> Garder la clé dans ce navigateur uniquement</label>
+      <span class="small muted">Crée une clé sur <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a> et ajoute quelques crédits.</span>
+    </div>
+    <div class="field">
+      <span class="label">Modèles</span>
+      <div class="models" id="models"></div>
+      <span class="small muted" id="modelsNote">Chargement de la liste des modèles…</span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="field">
+      <label class="label" for="topic">Sujet du débat</label>
+      <textarea id="topic" rows="2" placeholder="Pose une question qui divise…"></textarea>
+      <div class="chips" id="chips"></div>
+    </div>
+    <div class="opts">
+      <div class="field">
+        <label class="label" for="rounds">Réfutations</label>
+        <select id="rounds"><option value="1">1 tour</option><option value="2" selected>2 tours</option><option value="3">3 tours</option></select>
+      </div>
+      <div class="field">
+        <label class="label" for="words">Longueur max</label>
+        <select id="words"><option value="120">120 mots</option><option value="200" selected>200 mots</option><option value="300">300 mots</option></select>
+      </div>
+      <div class="field">
+        <span class="label">Pendant le débat</span>
+        <label class="check"><input id="blind" type="checkbox" checked> Cacher les noms</label>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" id="go" type="button">Lancer le débat</button>
+      <button class="btn ghost" id="stop" type="button" hidden>Arrêter</button>
+      <span class="small muted mono" id="cost"></span>
+    </div>
+    <div class="error" id="err" hidden></div>
+  </div>
+</section>
+
+<section class="panel" id="arena">
+  <div class="arena-head">
+    <div>
+      <span class="label" id="arenaLabel">Déroulement</span>
+      <p class="topic" id="arenaTopic" hidden></p>
+    </div>
+    <ol class="steps" id="steps"></ol>
+  </div>
+  <div class="empty" id="empty">
+    <div><b>Ouverture</b><span>Chaque IA reçoit une lettre au hasard (A, B ou C) et présente sa thèse.</span></div>
+    <div><b>Réfutations</b><span>Chacune lit les deux autres et attaque leurs meilleurs arguments.</span></div>
+    <div><b>Vote</b><span>Chaque IA juge le débat anonymisé avec de nouveaux numéros mélangés.</span></div>
+    <div><b>Verdict</b><span>Seules les notes des deux autres juges comptent. Le classement s'ajoute à la saison.</span></div>
+  </div>
+  <div id="rounds-out" class="round-list" style="display:flex;flex-direction:column;gap:22px"></div>
+</section>
+
+<section class="panel" id="verdict" hidden>
+  <h2>Verdict</h2>
+  <div class="podium" id="podium"></div>
+  <p class="note" id="bias"></p>
+  <div class="judges" id="judges"></div>
+</section>
+
+<section class="panel">
+  <div class="arena-head">
+    <h2>Saison</h2>
+    <button class="btn ghost small" id="reset" type="button" style="padding:7px 14px">Remettre à zéro</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>IA</th><th class="n">Victoires</th><th class="n">Débats</th><th class="n">Note moyenne</th></tr></thead>
+      <tbody id="season"></tbody>
+    </table>
+  </div>
+  <div class="field">
+    <span class="label">Derniers débats</span>
+    <ul class="hist" id="hist"></ul>
+  </div>
+</section>
+
+<footer>Les appels partent directement de ton navigateur vers OpenRouter. La clé et les scores restent sur cet appareil.</footer>
+</div>
+
+<script>
+const API = 'https://openrouter.ai/api/v1';
+const $ = s => document.querySelector(s);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch{ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch{} },
+  del(k){ try{ localStorage.removeItem(k); }catch{} }
+};
+
+const SLOTS = [
+  { key:'claude', label:'Claude',  prefix:'anthropic/',     prefer:/opus/i, avoid:/haiku|instant|:free/i, fallback:'anthropic/claude-opus-4.5' },
+  { key:'gpt',    label:'ChatGPT', prefix:'openai/',        prefer:/^openai\/gpt-\d+(\.\d+)?$/i, avoid:/mini|nano|audio|search|image|realtime|oss|codex|instruct|turbo|3\.5|4o|4\.1|:free/i, fallback:'openai/gpt-5' },
+  { key:'gemini', label:'Gemini',  prefix:'google/gemini',  prefer:/pro/i, avoid:/flash|lite|image|tts|embed|exp|:free/i, fallback:'google/gemini-2.5-pro' }
+];
+const LABEL = Object.fromEntries(SLOTS.map(s => [s.key, s.label]));
+const TOPICS = [
+  'Les mathématiques sont-elles inventées ou découvertes ?',
+  'Une IA peut-elle comprendre ce qu\'elle dit ?',
+  'Le libre arbitre existe-t-il ?',
+  'Faut-il ralentir le développement de l\'IA ?',
+  'Laquelle de vous trois est la plus intelligente ?'
+];
+
+let MODELS = [];
+let cfg = store.get('arene.cfg', {});
+let debate = null, controller = null, apiKey = '';
+
+/* ---------- Setup UI ---------- */
+function buildSetup(){
+  const box = $('#models');
+  SLOTS.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'model';
+    row.innerHTML = `<b>${s.label}</b><input type="text" id="m-${s.key}" list="dl-${s.key}" spellcheck="false" autocomplete="off"><datalist id="dl-${s.key}"></datalist><span class="price" id="p-${s.key}"></span>`;
+    box.appendChild(row);
+    const inp = row.querySelector('input');
+    inp.value = cfg.models?.[s.key] || s.fallback;
+    inp.addEventListener('change', () => { saveCfg(); showPrice(s.key); });
+  });
+  TOPICS.forEach(t => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.textContent = t;
+    b.addEventListener('click', () => { $('#topic').value = t; });
+    $('#chips').appendChild(b);
+  });
+  if (cfg.rounds) $('#rounds').value = cfg.rounds;
+  if (cfg.words) $('#words').value = cfg.words;
+  ['#rounds', '#words'].forEach(id => $(id).addEventListener('change', saveCfg));
+  const k = store.get('arene.key', '');
+  if (k) $('#key').value = k;
+  $('#remember').addEventListener('change', e => { if (!e.target.checked) store.del('arene.key'); });
+}
+function saveCfg(){
+  cfg = { models:Object.fromEntries(SLOTS.map(s => [s.key, $('#m-' + s.key).value.trim()])), rounds:$('#rounds').value, words:$('#words').value, userPicked:true };
+  store.set('arene.cfg', cfg);
+}
+function pickDefault(s){
+  const list = MODELS.filter(m => m.id.startsWith(s.prefix));
+  const ok = list.filter(m => !s.avoid.test(m.id));
+  return (ok.find(m => s.prefer.test(m.id)) || ok[0] || list[0] || {}).id;
+}
+function showPrice(key){
+  const id = $('#m-' + key).value.trim();
+  const m = MODELS.find(x => x.id === id);
+  const el = $('#p-' + key);
+  if (!m){ el.textContent = MODELS.length ? 'Modèle introuvable dans la liste OpenRouter.' : ''; return; }
+  const pin = parseFloat(m.pricing?.prompt) * 1e6, pout = parseFloat(m.pricing?.completion) * 1e6;
+  el.textContent = `${m.name || m.id}` + (isFinite(pin) ? ` · ${fmt(pin)} $ / M tokens en entrée, ${fmt(pout)} $ en sortie` : '');
+}
+const fmt = n => (n >= 10 ? n.toFixed(0) : n.toFixed(2)).replace('.', ',');
+
+async function loadModels(){
+  try {
+    const r = await fetch(API + '/models');
+    const j = await r.json();
+    MODELS = (j.data || []).sort((a, b) => (b.created || 0) - (a.created || 0));
+    SLOTS.forEach(s => {
+      const dl = $('#dl-' + s.key);
+      MODELS.filter(m => m.id.startsWith(s.prefix)).forEach(m => {
+        const o = document.createElement('option'); o.value = m.id; o.label = m.name || m.id; dl.appendChild(o);
+      });
+      if (!cfg.userPicked){ const d = pickDefault(s); if (d) $('#m-' + s.key).value = d; }
+      showPrice(s.key);
+    });
+    $('#modelsNote').textContent = 'Les modèles les plus récents sont choisis par défaut. Tape pour voir les autres.';
+  } catch {
+    $('#modelsNote').textContent = 'Liste des modèles indisponible : vérifie les identifiants à la main (format fournisseur/modèle).';
+  }
+}
+
+/* ---------- Helpers ---------- */
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const clean = t => t.replace(/\r/g, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/^#+\s*/gm, '').trim();
+function showError(msg){ const e = $('#err'); e.textContent = msg; e.hidden = !msg; }
+function addCost(c){ if (typeof c === 'number' && debate){ debate.cost += c; $('#cost').textContent = 'Coût : ' + debate.cost.toFixed(4).replace('.', ',') + ' $'; } }
+
+function errText(status, msg, model){
+  if (status === 401) return 'Clé API refusée. Vérifie-la sur openrouter.ai/keys.';
+  if (status === 402) return 'Crédits OpenRouter insuffisants. Recharge ton compte puis relance.';
+  if (status === 429) return 'Trop de requêtes en même temps. Attends quelques secondes et relance.';
+  if (status === 400 || status === 404) return `Le modèle « ${model} » a refusé la requête${msg ? ' : ' + msg : ''}. Vérifie son identifiant.`;
+  return `Erreur ${status} avec ${model}${msg ? ' : ' + msg : ''}.`;
+}
+
+async function chat(model, messages, maxTokens){
+  for (let attempt = 0; attempt < 2; attempt++){
+    let r;
+    try {
+      r = await fetch(API + '/chat/completions', {
+        method:'POST', signal:controller.signal,
+        headers:{ 'Authorization':'Bearer ' + apiKey, 'Content-Type':'application/json' },
+        body:JSON.stringify({ model, messages, max_tokens:maxTokens, usage:{ include:true }, reasoning:{ exclude:true } })
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      if (attempt === 0){ await wait(1500); continue; }
+      throw new Error('Impossible de joindre OpenRouter. Vérifie ta connexion internet.');
+    }
+    const j = await r.json().catch(() => ({}));
+    if (r.ok && !j.error){
+      addCost(j.usage?.cost);
+      const c = j.choices?.[0]?.message?.content;
+      const text = Array.isArray(c) ? c.map(p => p.text || '').join('') : (c || '');
+      if (text.trim()) return text;
+      if (attempt === 0) continue;
+      throw new Error(`${model} a renvoyé une réponse vide.`);
+    }
+    const status = r.ok ? (j.error?.code || 500) : r.status;
+    if ((status === 429 || status >= 500) && attempt === 0){ await wait(2500); continue; }
+    throw new Error(errText(status, j.error?.message, model));
+  }
+}
+
+/* ---------- Debate ---------- */
+function transcript(rounds, labelOf){
+  const order = SLOTS.map(s => s.key).sort((x, y) => labelOf(x).localeCompare(labelOf(y)));
+  return rounds.map(r => `### ${r.title}\n\n` + order.map(k => `[Débatteur ${labelOf(k)}]\n${clean(r.turns[k] || '')}`).join('\n\n')).join('\n\n');
+}
+
+function debaterMessages(slot, k, W){
+  const me = debate.letterOf[slot];
+  const others = Object.values(debate.letterOf).filter(l => l !== me).sort();
+  const sys = `Tu participes à un débat face à deux autres intelligences artificielles. Tu es le débatteur ${me} ; tes adversaires sont ${others[0]} et ${others[1]}. Les identités sont anonymes : ne révèle jamais ton nom, ton modèle ni ton éditeur, et ne cherche pas à deviner ceux des autres.
+Sujet : « ${debate.topic} »
+Prends la position que tu juges la plus défendable et défends-la avec rigueur : arguments précis, exemples concrets, faits exacts. Pas de flatterie ni de formules creuses. Tu peux concéder un point quand c'est honnête.
+Réponds en français, en prose (sans titres ni listes), en ${W} mots maximum.`;
+  const user = k === 0
+    ? 'Tour 1 · Ouverture. Présente ta thèse et tes meilleurs arguments.'
+    : `Voici le débat jusqu'ici :\n\n${transcript(debate.rounds.slice(0, k), s => debate.letterOf[s])}\n\nTour ${k + 1} · Réfutation. Attaque les points les plus forts de tes adversaires en les nommant (${others.join(' et ')}), corrige leurs erreurs et renforce ta position.`;
+  return [{ role:'system', content:sys }, { role:'user', content:user }];
+}
+
+async function judge(slot){
+  const perm = shuffle(['1', '2', '3']);
+  const lab = {}; SLOTS.forEach((s, i) => lab[s.key] = perm[i]);
+  const sys = `Tu es le juge impartial d'un débat entre trois débatteurs anonymes, numérotés 1, 2 et 3. L'un d'eux peut te ressembler : ignore cette impression et juge uniquement le contenu.
+Critères : rigueur du raisonnement, exactitude des faits, qualité des réfutations, clarté. La longueur et les effets de style ne comptent pas.
+Dans ta justification, désigne toujours les participants sous la forme « Débatteur 1 », « Débatteur 2 », « Débatteur 3 ».
+Réponds UNIQUEMENT avec un objet JSON valide, sans texte autour :
+{"scores":{"1":<note de 0 à 10>,"2":<note>,"3":<note>},"gagnant":"<1, 2 ou 3>","justification":"<2 ou 3 phrases en français>"}`;
+  const user = `Sujet : « ${debate.topic} »\n\n${transcript(debate.rounds, s => lab[s])}`;
+  const msgs = [{ role:'system', content:sys }, { role:'user', content:user }];
+  for (let attempt = 0; attempt < 2; attempt++){
+    const text = await chat(debate.models[slot], msgs, 3000);
+    try {
+      const o = JSON.parse(text.match(/\{[\s\S]*\}/)[0]);
+      const inv = Object.fromEntries(Object.entries(lab).map(([k, v]) => [v, k]));
+      const scores = {};
+      SLOTS.forEach(s => { const v = parseFloat(String(o.scores?.[lab[s.key]]).replace(',', '.')); scores[s.key] = isFinite(v) ? Math.max(0, Math.min(10, v)) : null; });
+      const why = String(o.justification || '').replace(/d[ée]batteur\s*([123])/gi, (_, n) => LABEL[inv[n]] || _);
+      return { scores, pick:inv[String(o.gagnant).replace(/\D/g, '')] || null, why };
+    } catch {
+      msgs.push({ role:'assistant', content:text }, { role:'user', content:'Ta réponse n\'était pas un JSON valide. Renvoie uniquement l\'objet JSON demandé.' });
+    }
+  }
+  return null;
+}
+
+function setSteps(titles, active){
+  const ol = $('#steps'); ol.textContent = '';
+  titles.forEach((t, i) => {
+    const li = document.createElement('li'); li.textContent = t;
+    if (i < active) li.className = 'done'; else if (i === active) li.className = 'active';
+    ol.appendChild(li);
+  });
+}
+
+function nameTag(slot){
+  return ($('#blind').checked && !debate.revealed) ? '' : `${LABEL[slot]} · ${debate.models[slot]}`;
+}
+function renderRound(k){
+  const r = debate.rounds[k];
+  const sec = document.createElement('div'); sec.className = 'round';
+  sec.innerHTML = `<h3></h3><div class="lanes"></div>`;
+  sec.querySelector('h3').textContent = r.title;
+  const lanes = sec.querySelector('.lanes');
+  SLOTS.map(s => s.key).sort((x, y) => debate.letterOf[x].localeCompare(debate.letterOf[y])).forEach(slot => {
+    const L = debate.letterOf[slot];
+    const card = document.createElement('article');
+    card.className = `card pending l${L}`; card.id = `c-${k}-${slot}`; card.dataset.slot = slot;
+    card.innerHTML = `<div class="who"><span class="letter">${L}</span><span>Débatteur ${L}</span><span class="name"></span></div><div class="body">Rédige son intervention…</div>`;
+    card.querySelector('.name').textContent = nameTag(slot);
+    lanes.appendChild(card);
+  });
+  $('#rounds-out').appendChild(sec);
+}
+function fillCard(k, slot, text, failed){
+  const card = $(`#c-${k}-${slot}`); if (!card) return;
+  const body = card.querySelector('.body'); body.textContent = '';
+  card.classList.remove('pending'); if (failed) card.classList.add('failed');
+  if (failed){ body.textContent = text; return; }
+  clean(text).split(/\n{2,}/).map(p => p.trim()).filter(Boolean).forEach(p => {
+    const el = document.createElement('p'); el.textContent = p; body.appendChild(el);
+  });
+}
+function refreshNames(){
+  if (!debate) return;
+  document.querySelectorAll('.card').forEach(c => { c.querySelector('.name').textContent = nameTag(c.dataset.slot); });
+}
+
+async function runDebate(){
+  showError('');
+  apiKey = $('#key').value.trim();
+  const topic = $('#topic').value.trim();
+  if (!apiKey){ showError('Ajoute ta clé API OpenRouter pour lancer le débat.'); $('#key').focus(); return; }
+  if (!topic){ showError('Écris un sujet ou choisis-en un dans la liste.'); $('#topic').focus(); return; }
+  const models = {};
+  for (const s of SLOTS){
+    models[s.key] = $('#m-' + s.key).value.trim();
+    if (!models[s.key]){ showError(`Indique un modèle pour ${s.label}.`); return; }
+  }
+  if ($('#remember').checked) store.set('arene.key', apiKey);
+  saveCfg();
+
+  const R = +$('#rounds').value, W = +$('#words').value;
+  const letters = shuffle(['A', 'B', 'C']);
+  const letterOf = {}; SLOTS.forEach((s, i) => letterOf[s.key] = letters[i]);
+  debate = { topic, models, letterOf, rounds:[], verdicts:{}, cost:0, revealed:false };
+  controller = new AbortController();
+  const titles = ['Ouverture', ...Array.from({ length:R }, (_, i) => 'Réfutation ' + (i + 1)), 'Vote'];
+
+  $('#empty').hidden = true; $('#verdict').hidden = true;
+  $('#rounds-out').textContent = '';
+  $('#arenaLabel').textContent = 'Sujet';
+  $('#arenaTopic').textContent = topic; $('#arenaTopic').hidden = false;
+  $('#cost').textContent = '';
+  $('#go').disabled = true; $('#stop').hidden = false;
+
+  try {
+    for (let k = 0; k < titles.length - 1; k++){
+      setSteps(titles, k);
+      debate.rounds.push({ title:titles[k], turns:{} });
+      renderRound(k);
+      await Promise.all(SLOTS.map(async s => {
+        try {
+          const text = await chat(models[s.key], debaterMessages(s.key, k, W), 4000);
+          debate.rounds[k].turns[s.key] = text; fillCard(k, s.key, text);
+        } catch (e) {
+          fillCard(k, s.key, e.name === 'AbortError' ? 'Interrompu.' : e.message, true); throw e;
+        }
+      }));
+    }
+    setSteps(titles, titles.length - 1);
+    const results = await Promise.all(SLOTS.map(s => judge(s.key).catch(e => { if (e.name === 'AbortError') throw e; return { error:e.message }; })));
+    SLOTS.forEach((s, i) => debate.verdicts[s.key] = results[i]);
+    setSteps(titles, titles.length);
+    debate.revealed = true; refreshNames();
+    finish();
+  } catch (e) {
+    showError(e.name === 'AbortError' ? 'Débat arrêté. Rien n\'a été compté dans la saison.' : e.message + ' Le débat s\'est arrêté et n\'a pas été compté.');
+    $('#steps').textContent = '';
+  } finally {
+    $('#go').disabled = false; $('#stop').hidden = true;
+  }
+}
+
+function finish(){
+  const res = {};
+  SLOTS.forEach(s => {
+    const vals = SLOTS.filter(j => j.key !== s.key).map(j => debate.verdicts[j.key]?.scores?.[s.key]).filter(v => typeof v === 'number');
+    res[s.key] = {
+      score: vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null,
+      from: vals,
+      self: debate.verdicts[s.key]?.scores?.[s.key] ?? null
+    };
+  });
+  const ranked = SLOTS.map(s => s.key).sort((a, b) => (res[b].score ?? -1) - (res[a].score ?? -1));
+  const best = res[ranked[0]].score;
+  const winners = best == null ? [] : ranked.filter(k => res[k].score != null && Math.abs(res[k].score - best) < 0.05);
+
+  const pod = $('#podium'); pod.textContent = '';
+  ranked.forEach((k, i) => {
+    const r = res[k], L = debate.letterOf[k];
+    const el = document.createElement('div');
+    el.className = `place l${L}` + (winners.includes(k) ? ' win' : '');
+    const rank = winners.includes(k) ? 1 : i + 1;
+    el.innerHTML = `<span class="rank">${rank}</span><div><div class="nm"></div><div class="detail"></div></div><div class="score"></div>`;
+    el.querySelector('.nm').textContent = `${LABEL[k]} `;
+    const chip = document.createElement('span'); chip.className = 'letter'; chip.textContent = L; chip.style.marginLeft = '6px'; chip.style.verticalAlign = 'middle';
+    el.querySelector('.nm').appendChild(chip);
+    const f = v => v.toFixed(1).replace('.', ',');
+    el.querySelector('.detail').textContent =
+      (r.from.length ? `Notes des autres juges : ${r.from.map(f).join(' et ')}` : 'Aucune note valide des autres juges') +
+      (r.self != null ? ` · Auto-évaluation : ${f(r.self)} (non comptée)` : '');
+    el.querySelector('.score').innerHTML = r.score != null ? `${f(r.score)}<small>/10</small>` : '—';
+    pod.appendChild(el);
+  });
+
+  const selfPicks = SLOTS.filter(s => debate.verdicts[s.key]?.pick === s.key).length;
+  const valid = SLOTS.filter(s => debate.verdicts[s.key]?.scores).length;
+  $('#bias').textContent =
+    (winners.length > 1 ? 'Égalité au sommet. ' : '') +
+    `${selfPicks} juge${selfPicks > 1 ? 's' : ''} sur ${valid} ${selfPicks > 1 ? 'se sont désignés' : 's\'est désigné'} vainqueur${selfPicks > 1 ? 's' : ''} sans connaître les identités.` +
+    (debate.cost ? ` Coût total : ${debate.cost.toFixed(4).replace('.', ',')} $.` : '');
+
+  const jb = $('#judges'); jb.textContent = '';
+  SLOTS.forEach(s => {
+    const v = debate.verdicts[s.key];
+    const d = document.createElement('div'); d.className = 'judge';
+    const head = document.createElement('span'); head.className = 'label';
+    head.textContent = `Juge ${s.label}` + (v?.pick ? ` · vote pour ${LABEL[v.pick]}` : '');
+    const p = document.createElement('div');
+    p.textContent = v?.why || v?.error || 'Ce juge n\'a pas renvoyé de verdict exploitable.';
+    d.append(head, p); jb.appendChild(d);
+  });
+  $('#verdict').hidden = false;
+  $('#verdict').scrollIntoView({ behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block:'start' });
+
+  // Season
+  const season = store.get('arene.season', { stats:{}, hist:[] });
+  SLOTS.forEach(s => {
+    const st = season.stats[s.key] || (season.stats[s.key] = { wins:0, debates:0, sum:0, n:0 });
+    st.debates++;
+    if (winners.length === 1 && winners[0] === s.key) st.wins++;
+    if (res[s.key].score != null){ st.sum += res[s.key].score; st.n++; }
+  });
+  season.hist.unshift({ topic:debate.topic, date:Date.now(), winner:winners.length === 1 ? winners[0] : null });
+  season.hist = season.hist.slice(0, 30);
+  store.set('arene.season', season);
+  renderSeason();
+}
+
+function renderSeason(){
+  const season = store.get('arene.season', { stats:{}, hist:[] });
+  const rows = SLOTS.map(s => ({ s, st:season.stats[s.key] || { wins:0, debates:0, sum:0, n:0 } }))
+    .sort((a, b) => b.st.wins - a.st.wins || (b.st.n ? b.st.sum / b.st.n : 0) - (a.st.n ? a.st.sum / a.st.n : 0));
+  const tb = $('#season'); tb.textContent = '';
+  rows.forEach(({ s, st }) => {
+    const tr = document.createElement('tr');
+    const avg = st.n ? (st.sum / st.n).toFixed(2).replace('.', ',') : '—';
+    tr.innerHTML = `<td></td><td class="n">${st.wins}</td><td class="n">${st.debates}</td><td class="n">${avg}</td>`;
+    tr.firstChild.textContent = s.label; tr.firstChild.style.fontWeight = '600';
+    tb.appendChild(tr);
+  });
+  const ul = $('#hist'); ul.textContent = '';
+  if (!season.hist.length){
+    const li = document.createElement('li'); li.className = 'muted'; li.textContent = 'Aucun débat pour l\'instant. Le premier vainqueur apparaîtra ici.'; ul.appendChild(li);
+  }
+  season.hist.slice(0, 8).forEach(h => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="t"></span><span class="w"></span>';
+    li.querySelector('.t').textContent = h.topic;
+    li.querySelector('.w').textContent = h.winner ? LABEL[h.winner] : 'Égalité';
+    ul.appendChild(li);
+  });
+}
+
+let resetArmed = false;
+$('#reset').addEventListener('click', () => {
+  const b = $('#reset');
+  if (!resetArmed){ resetArmed = true; b.textContent = 'Confirmer la remise à zéro'; setTimeout(() => { resetArmed = false; b.textContent = 'Remettre à zéro'; }, 4000); return; }
+  store.del('arene.season'); resetArmed = false; b.textContent = 'Remettre à zéro'; renderSeason();
+});
+$('#go').addEventListener('click', runDebate);
+$('#stop').addEventListener('click', () => controller && controller.abort());
+$('#blind').addEventListener('change', refreshNames);
+
+buildSetup();
+renderSeason();
+loadModels();
+</script>
+</body>
+</html>
